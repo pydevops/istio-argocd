@@ -1,0 +1,110 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: istio-system
+  name: waitfor-cacerts
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+    #argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  template:
+    spec:
+      serviceAccountName: kubectl-sa
+      containers:
+      - name: waitfor-cacerts
+        image: bitnami/kubectl:latest
+        command:
+        - "bin/bash"
+        - "-c"
+        - "kubectl -n istio-system wait --for=jsonpath='{.data.ca\\.crt}' secrets/cacerts"
+      restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: istio-system
+  name: restart-eastwest-gw
+spec:
+  template:
+    spec:
+      serviceAccountName: kubectl-sa
+      containers:
+      - name: restart-eastwest-gw
+        image: bitnami/kubectl:latest
+        command:
+        - "bin/bash"
+        - "-c"
+        - "sleep 10 && kubectl -n istio-system delete pod -l app=eastwest-gateway"
+      restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: istio-system
+  name: restart-private-ns-igw
+spec:
+  template:
+    spec:
+      serviceAccountName: kubectl-sa
+      containers:
+      - name: restart-private-ns-igw
+        image: bitnami/kubectl:latest
+        command:
+        - "bin/bash"
+        - "-c"
+        - "sleep 10 && kubectl -n istio-system delete pod -l app=private-northsouth-gateway"
+      restartPolicy: Never
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubectl-sa
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubectl-role
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - watch
+  - list
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubectl-role-binding
+  namespace: istio-system
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubectl-role
+subjects:
+- kind: ServiceAccount
+  name: kubectl-sa
+  namespace: istio-system
